@@ -86,3 +86,15 @@ ggplot(new_heart, aes(x = MaxHR, y = Age, color = HD)) +
 Based on this plot, I think an interaction plot would be better than an additive model. That is because the lines are not parallel (or almost parallel). That means that the slope changes with the heart disease status, which points to an interaction model being a more appropriate fit.
 
 
+## Task 4: Testing and Training
+
+Now, we will split our `new_heart` into an 80-20 spli for training and testing. This will be done below (with a seed of 101 set):
+
+```{r}
+set.seed(101)
+
+heart_split <- initial_split(new_heart, prop = 0.8)
+
+train <- training(heart_split)
+test <- testing(heart_split)
+```
