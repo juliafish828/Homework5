@@ -98,3 +98,116 @@ heart_split <- initial_split(new_heart, prop = 0.8)
 train <- training(heart_split)
 test <- testing(heart_split)
 ```
+
+
+## Task 5: OLS and LASSO
+
+### Question 1
+
+First, we will fit an OLS interaction model named `ols_mlr` as described in the homework. We will then report a summary.
+
+```{r}
+ols_mlr <- lm(Age ~ MaxHR * HD, data = train)
+summary(ols_mlr)
+```
+
+From this summary, we see that the overall model is significant with an F value of 54.84 and an associated p-value of 2.2e-16. In addition, at the 0.05 significance level, all individual predictors are significant as well.
+
+### Question 2
+
+Now, to get a better evaluation of the model's performance, we will predict on the test set and calculate the RMSE using this model below:
+
+```{r}
+preds <- predict(ols_mlr, newdata = test)
+
+
+results <- test %>%
+  mutate(pred = preds)
+
+ols_rmse <- rmse(results, truth = Age, estimate = pred)
+ols_rmse
+```
+
+The RMSE using this model and the test set is 9.100206.
+
+
+### Question 3
+
+Now, we are going to fit a LASSO model with cross validation to compare to the OLS model fit above. We will start with our recipe as guided in the file:
+
+```{r}
+
+LASSO_recipe <- recipe(Age ~ MaxHR + HD, data = train) |>
+  step_dummy(all_nominal_predictors()) |>
+  step_normalize(all_numeric_predictors()) |>
+  step_interact(~ MaxHR:starts_with("HD_"))
+
+LASSO_recipe
+```
+
+### Question 4
+
+Now that out recipe is made, we will set up our `spec` and grid. After that, we will use those to pick a final model and report using `tidy()`. We will do that below:
+
+```{r}
+LASSO_spec <- linear_reg(penalty = tune(), mixture = 1) %>%
+  set_engine("glmnet")
+
+set.seed(101)
+heart_cv_folds <- vfold_cv(train, 10)
+
+
+LASSO_wkf <- workflow() |>
+  add_recipe(LASSO_recipe) |>
+  add_model(LASSO_spec)
+
+LASSO_grid <- LASSO_wkf |>
+  tune_grid(resamples = heart_cv_folds,
+            grid = grid_regular(penalty(), levels = 200))
+
+LASSO_grid |>
+  collect_metrics() |>
+  filter(.metric == "rmse")
+
+lowest_rmse <- LASSO_grid |>
+  select_best(metric = "rmse")
+
+LASSO_wkf |>
+  finalize_workflow(lowest_rmse)
+
+LASSO_final <- LASSO_wkf |>
+  finalize_workflow(lowest_rmse) |>
+  fit(train)
+
+tidy(LASSO_final)
+```
+
+As seen above, we selected the final model.
+
+### Question 5
+
+Without looking at the RMSE values, I would expect them to be lower for the LASSO model due to shrinkage of the coefficients to 0. It can be seen in the estimates column above that the coefficient estimates are much closer to 0 that for the OLS model, which leads me to believe that the variance will be lower and the RMSE will be lower as a result.
+
+### Question 6
+
+Now, we will calculate the RMSE for the LASSO model and compare it to the OLS model, ultimately looking for very similar values.
+
+```{r}
+preds2 <- predict(LASSO_final, new_data = test)
+
+
+LASSO_results <- test %>%
+  mutate(pred = preds2$.pred)
+
+LASSO_rmse <- rmse(LASSO_results, truth = Age, estimate = pred)
+LASSO_rmse
+
+```
+
+This value is very similar to the RMSE value obtained for the OLS model (9.100206).
+
+### Question 7
+
+The RMSE calculations ended up being roughly the same even though the coefficients are different since the shrinkage is targeted toward taking out unnecessary information in the model. In addition, the shrinkage affects ALL predictor coefficients in the model, which means that the prediction can stay fairly precise even if all of the coefficients differ. Said differently, the variance decreases with the LASSO model, but the bias increases, so that trade off makes the predictions still able to be similar to the OLS model.
+
+
